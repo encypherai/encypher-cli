@@ -406,6 +406,9 @@ jobs:
             dist/*.tar.gz dist/SHA256SUMS dist/inventory.json dist/install.sh dist/install.ps1
           gh release edit "v${VERSION}" --repo "${GITHUB_REPOSITORY}" --draft=false
 
+  # Every leg signs and verifies with the one smoke key, so the legs share
+  # one organisation's limits (64 outstanding signing plans, a per-caller
+  # verify concurrency cap). They run one at a time: legs at once got 429s.
   install-check:
     name: Install on ${{ matrix.name }}
     needs: [provenance, merge, publish]
@@ -415,6 +418,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         include:
           - name: Linux x86_64 and rockylinux:9
@@ -558,16 +562,18 @@ jobs:
   # only: it spends live signatures and needs the built archives, not a
   # published release. The cases run from the installed archive with their
   # work directory on an exFAT volume; only case verdicts reach this public
-  # log.
+  # log. It uses the same smoke key as install-check, so it starts after the
+  # install legs (whatever their result) and the Macs run one at a time.
   macos-e2e:
     name: macOS end to end on ${{ matrix.name }}
-    needs: [provenance, merge]
-    if: ${{ !inputs.publish }}
+    needs: [provenance, merge, install-check]
+    if: ${{ !cancelled() && !inputs.publish && needs.merge.result == 'success' }}
     runs-on: ${{ matrix.os }}
     environment: build
     timeout-minutes: 120
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         include:
           - name: Apple Silicon
