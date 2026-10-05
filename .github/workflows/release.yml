@@ -554,6 +554,109 @@ jobs:
             exit 1
           fi
 
+  # The macOS end-to-end subset (client-core PRD, section 11), on a dry run
+  # only: it spends live signatures and needs the built archives, not a
+  # published release. The live matrix and the two macOS cases run from the
+  # installed archive with their work directory on an exFAT volume; only
+  # case verdicts reach this public log.
+  macos-e2e:
+    name: macOS end to end on ${{ matrix.name }}
+    needs: [provenance, merge]
+    if: ${{ !inputs.publish }}
+    runs-on: ${{ matrix.os }}
+    environment: build
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Apple Silicon
+            os: macos-15
+            target: aarch64-apple-darwin
+          - name: Intel
+            os: macos-15-intel
+            target: x86_64-apple-darwin
+    env:
+      VERSION: ${{ needs.provenance.outputs.version }}
+      TARGET: ${{ matrix.target }}
+      ENCYPHER_API_KEY: ${{ secrets.ENCYPHER_API_KEY }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: ${{ env.SOURCE_REPOSITORY }}
+          ref: ${{ needs.provenance.outputs.revision }}
+          ssh-key: ${{ secrets.ENCYPHER_SOURCE_DEPLOY_KEY }}
+          path: source
+          sparse-checkout: |
+            packages/encypher-c2pa
+            packaging
+          persist-credentials: false
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      # The live matrix builds its fixture generator offline against the
+      # engine's lock file, so the crates are fetched first.
+      - name: Install the pinned toolchain and fetch the engine's crates
+        working-directory: source/packages/encypher-c2pa
+        run: |
+          rustup toolchain install "${RUSTUP_TOOLCHAIN}" --profile minimal
+          python ../../packaging/release/contained.py --label "cargo fetch" -- cargo fetch --locked
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: dist
+          path: dist
+
+      - name: c2patool 0.27.22 (pinned by SHA-256)
+        run: |
+          curl -fsSL -o "${RUNNER_TEMP}/c2patool.zip" \
+            https://github.com/contentauth/c2pa-rs/releases/download/c2patool-v0.27.22/c2patool-v0.27.22-universal-apple-darwin.zip
+          echo "d064ca72e599c74e5fdc2ed04b47d6cb62210a2b14db589d078c2ec27c98d3df  ${RUNNER_TEMP}/c2patool.zip" | shasum -a 256 -c
+          unzip -q "${RUNNER_TEMP}/c2patool.zip" -d "${RUNNER_TEMP}/c2patool"
+          tool="${RUNNER_TEMP}/c2patool/c2patool/c2patool"
+          chmod +x "${tool}"
+          "${tool}" --version
+          echo "C2PATOOL=${tool}" >> "$GITHUB_ENV"
+
+      - name: exFAT volume
+        run: |
+          hdiutil create -type SPARSE -size 6g -fs ExFAT -volname E2E "${RUNNER_TEMP}/e2e"
+          hdiutil attach -nobrowse "${RUNNER_TEMP}/e2e.sparseimage" -mountpoint "${RUNNER_TEMP}/exfat"
+          mount | grep -F "${RUNNER_TEMP}/exfat" | grep -qi exfat
+          echo "EXFAT=${RUNNER_TEMP}/exfat" >> "$GITHUB_ENV"
+
+      - name: Gate inventory of the archive under test
+        run: |
+          archive="dist/encypher-${VERSION}-${TARGET}.tar.gz"
+          python source/packages/encypher-c2pa/scripts/check-client-artifact.py "${archive}" > "${RUNNER_TEMP}/gate.json" 2>/dev/null
+          python -c 'import json, sys; print(json.dumps({"shipped": json.load(open(sys.argv[1]))}))' "${RUNNER_TEMP}/gate.json" > "${RUNNER_TEMP}/gate-inventory.json"
+          echo "ARCHIVE=${GITHUB_WORKSPACE}/${archive}" >> "$GITHUB_ENV"
+
+      # Every advertised format (JPEG included), JSON-LD metadata, the layered
+      # TIFF over 300 MB, the interrupted batch and the lost finalize. Only the
+      # summary line (counts and failed case names) is shown.
+      - name: Live matrix on exFAT
+        run: |
+          python source/packaging/release/contained.py --label "e2e: live matrix" --show '^[0-9]+/[0-9]+ passed' -- \
+            python source/packages/encypher-c2pa/crates/encypher-cli/scripts/e2e_live.py --tarball "${ARCHIVE}" \
+              --c2patool "${C2PATOOL}" --work "${EXFAT}/live" --fixture-cache "${RUNNER_TEMP}/fixtures" \
+              --gate-inventory "${RUNNER_TEMP}/gate-inventory.json"
+
+      - name: Lid closed during finalize, interrupted publish (exFAT)
+        run: |
+          python source/packaging/release/contained.py --label "e2e: macOS cases" --show '^e2e: ' -- \
+            python source/packaging/release/macos_e2e.py --tarball "${ARCHIVE}" --work "${EXFAT}/macos"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: failure()
+        with:
+          name: withheld-logs-macos-e2e-${{ matrix.target }}
+          path: ${{ runner.temp }}/contained/*.log.cms
+          if-no-files-found: ignore
+          retention-days: 7
+
   promote:
     name: Mark v${{ needs.provenance.outputs.version }} latest
     needs: [provenance, install-check]
