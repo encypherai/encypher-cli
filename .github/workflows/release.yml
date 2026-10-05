@@ -556,9 +556,9 @@ jobs:
 
   # The macOS end-to-end subset (client-core PRD, section 11), on a dry run
   # only: it spends live signatures and needs the built archives, not a
-  # published release. The live matrix and the two macOS cases run from the
-  # installed archive with their work directory on an exFAT volume; only
-  # case verdicts reach this public log.
+  # published release. The cases run from the installed archive with their
+  # work directory on an exFAT volume; only case verdicts reach this public
+  # log.
   macos-e2e:
     name: macOS end to end on ${{ matrix.name }}
     needs: [provenance, merge]
@@ -596,12 +596,13 @@ jobs:
         with:
           python-version: "3.12"
 
-      # The live matrix builds its fixture generator offline against the
-      # engine's lock file, so the crates are fetched first.
-      - name: Install the pinned toolchain and fetch the engine's crates
+      # The artifact gate reads binaries with llvm-tools. The live matrix
+      # builds its fixture generator offline against the engine's lock file,
+      # so the crates are fetched first.
+      - name: Install the pinned toolchain and llvm-tools, fetch the engine's crates
         working-directory: source/packages/encypher-c2pa
         run: |
-          rustup toolchain install "${RUSTUP_TOOLCHAIN}" --profile minimal
+          rustup toolchain install "${RUSTUP_TOOLCHAIN}" --profile minimal --component llvm-tools
           python ../../packaging/release/contained.py --label "cargo fetch" -- cargo fetch --locked
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
@@ -634,20 +635,16 @@ jobs:
           python -c 'import json, sys; print(json.dumps({"shipped": json.load(open(sys.argv[1]))}))' "${RUNNER_TEMP}/gate.json" > "${RUNNER_TEMP}/gate-inventory.json"
           echo "ARCHIVE=${GITHUB_WORKSPACE}/${archive}" >> "$GITHUB_ENV"
 
-      # Every advertised format (JPEG included), JSON-LD metadata, the layered
-      # TIFF over 300 MB, the interrupted batch and the lost finalize. Only the
-      # summary line (counts and failed case names) is shown.
-      - name: Live matrix on exFAT
+      # JPEG sign and verify, JSON-LD metadata, the layered TIFF over 300 MB,
+      # the batch interrupted and resumed, the lid closed during finalize
+      # (SIGSTOP) and the interrupted publish, all from the installed archive
+      # with the work directory on exFAT. Only the `e2e:` verdicts are shown.
+      - name: macOS end-to-end subset on exFAT
         run: |
-          python source/packaging/release/contained.py --label "e2e: live matrix" --show '^[0-9]+/[0-9]+ passed' -- \
-            python source/packages/encypher-c2pa/crates/encypher-cli/scripts/e2e_live.py --tarball "${ARCHIVE}" \
-              --c2patool "${C2PATOOL}" --work "${EXFAT}/live" --fixture-cache "${RUNNER_TEMP}/fixtures" \
-              --gate-inventory "${RUNNER_TEMP}/gate-inventory.json"
-
-      - name: Lid closed during finalize, interrupted publish (exFAT)
-        run: |
-          python source/packaging/release/contained.py --label "e2e: macOS cases" --show '^e2e: ' -- \
-            python source/packaging/release/macos_e2e.py --tarball "${ARCHIVE}" --work "${EXFAT}/macos"
+          python source/packaging/release/contained.py --label "e2e: macOS subset" --show '^e2e: ' -- \
+            python source/packaging/release/macos_e2e.py --tarball "${ARCHIVE}" --work "${EXFAT}/macos" \
+              --c2patool "${C2PATOOL}" --gate-inventory "${RUNNER_TEMP}/gate-inventory.json" \
+              --fixture-cache "${RUNNER_TEMP}/fixtures"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: failure()

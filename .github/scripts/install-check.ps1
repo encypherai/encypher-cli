@@ -69,11 +69,13 @@ if ($LASTEXITCODE -ne 0) { throw "install-check: inspect exited $LASTEXITCODE" }
 if ($LASTEXITCODE -ne 0) { throw "install-check: verify exited $LASTEXITCODE" }
 if ($env:ENCYPHER_API_KEY) {
     $signed = Join-Path ([IO.Path]::GetTempPath()) ('encypher-' + [Guid]::NewGuid().ToString('N') + '.png')
-    & $cli sign (Join-Path $env:FIXTURE 'image_png.png') -o $signed --on-existing-provenance chain --json `
-        --digital-source-type http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "install-check: sign exited $LASTEXITCODE" }
-    & $cli verify $signed --json | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "install-check: verify of the signed PNG exited $LASTEXITCODE" }
+    # A failure shows the CLI's JSON envelope (code and message; the CLI
+    # never echoes the key), so the public log says why.
+    $envelope = (& $cli sign (Join-Path $env:FIXTURE 'image_png.png') -o $signed --on-existing-provenance chain --json `
+        --digital-source-type http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture) -join "`n"
+    if ($LASTEXITCODE -ne 0) { throw "install-check: sign exited ${LASTEXITCODE}: $envelope" }
+    $envelope = (& $cli verify $signed --json) -join "`n"
+    if ($LASTEXITCODE -ne 0) { throw "install-check: verify of the signed PNG exited ${LASTEXITCODE}: $envelope" }
     Write-Host 'install-check: signed and verified a PNG with the installed encypher'
 } else {
     Write-Host 'install-check: ENCYPHER_API_KEY is not configured; live sign skipped'
