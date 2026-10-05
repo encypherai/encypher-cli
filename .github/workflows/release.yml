@@ -161,11 +161,13 @@ jobs:
       # install.ps1 follows redirects itself and checks every hop before
       # requesting it; this runs that downloader under both shells against
       # local servers, with a throwaway certificate trusted on this runner only.
-      - name: install.ps1 downloader under Windows PowerShell 5.1 and PowerShell 7
+      # It also checks that install-check.ps1 reads the printed PATH lines
+      # whole, which Windows PowerShell 5.1's formatting once split.
+      - name: install.ps1 downloader and PATH lines under Windows PowerShell 5.1 and PowerShell 7
         working-directory: source/packaging/release
         env:
           ENCYPHER_TEST_TRUST_MACHINE_ROOT: "1"
-        run: python -m unittest -v test_install.SaveEncypherUrl
+        run: python -m unittest -v test_install.SaveEncypherUrl test_install.InstallPs1PathLine
 
       # The plain logs never leave the runner; these are encrypted to the
       # maintainer certificate in this repository.

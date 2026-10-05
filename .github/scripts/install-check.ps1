@@ -29,9 +29,20 @@ if ($env:ENCYPHER_CHECK_UNPINNED) {
     $scriptUrl = "$env:BASE/latest/download/install.ps1"
     Remove-Item Env:\ENCYPHER_VERSION
 }
-$out = (Invoke-RestMethod $scriptUrl | Invoke-Expression) 6>&1 | Out-String
-Write-Host $out
-$lines = $out -split "`r?`n"
+# Each Write-Host record is one installer line, read from the record itself.
+# Out-String would format the records, and Windows PowerShell 5.1 wraps that
+# at the console width, splitting the long PATH line for new terminals.
+function ConvertTo-InstallerLines {
+    param([Parameter(ValueFromPipeline = $true)] $Record)
+    process {
+        $data = $Record
+        if ($data -is [System.Management.Automation.InformationRecord]) { $data = $data.MessageData }
+        if ($data -is [System.Management.Automation.HostInformationMessage]) { $data = $data.Message }
+        "$data" -split "`r?`n"
+    }
+}
+$lines = @((Invoke-RestMethod $scriptUrl | Invoke-Expression) 6>&1 | ConvertTo-InstallerLines)
+Write-Host ($lines -join [Environment]::NewLine)
 function Get-LineAfter([string] $Marker) {
     for ($i = 0; $i -lt $lines.Count - 1; $i++) {
         if ($lines[$i].Contains($Marker)) { return $lines[$i + 1].Trim() }
