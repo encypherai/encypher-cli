@@ -15,7 +15,7 @@ Credentials (the C2PA standard). The proof travels with the file, and anyone
 can check it. Your files never leave your machine: Encypher's service signs,
 and `encypher` writes the signed copy locally and checks it before saving it.
 
-This README documents encypher v0.1.0.
+This README documents encypher v0.1.1.
 
 ## Install
 
@@ -40,8 +40,8 @@ update. `ENCYPHER_INSTALL_DIR` installs to another absolute directory.
 To install a specific version, name it in both the URL and `ENCYPHER_VERSION`:
 
 ```
-curl -fsSL https://github.com/encypherai/encypher-cli/releases/download/v0.1.0/install.sh | ENCYPHER_VERSION=0.1.0 sh
-$env:ENCYPHER_VERSION = '0.1.0'; irm https://github.com/encypherai/encypher-cli/releases/download/v0.1.0/install.ps1 | iex
+curl -fsSL https://github.com/encypherai/encypher-cli/releases/download/v0.1.1/install.sh | ENCYPHER_VERSION=0.1.1 sh
+$env:ENCYPHER_VERSION = '0.1.1'; irm https://github.com/encypherai/encypher-cli/releases/download/v0.1.1/install.ps1 | iex
 ```
 
 A release stays marked "Pre-release" until the installer has run it on macOS,
@@ -144,7 +144,8 @@ mkdir -p ~/.local/bin && cp encypher-<version>-<target>/encypher ~/.local/bin/
 
 After a browser download on macOS, also run
 `xattr -dr com.apple.quarantine encypher-<version>-<target>`. The archive also
-carries the C library and header for developers.
+carries the C library and header for developers, the `LICENSE` and
+`THIRD-PARTY-NOTICES.md`.
 
 ## Checking a release
 
@@ -152,7 +153,7 @@ Releases are immutable once published, and GitHub signs an attestation for
 each one:
 
 ```
-gh release verify v0.1.0 -R encypherai/encypher-cli
+gh release verify v0.1.1 -R encypherai/encypher-cli
 ```
 
 The checksums catch a damaged or substituted download. They do not protect
@@ -174,6 +175,8 @@ Apple Silicon requires.
 
 ## License
 
-`encypher` and the install scripts are licensed under the Apache License 2.0
-or the MIT license, at your option; see `LICENSE`. The Encypher name and logo
-are not licensed under these terms.
+`encypher`, the C library and the install scripts are licensed under the
+Apache License 2.0; see `LICENSE`. The Encypher name and logo are not
+licensed under these terms. The binaries also contain open-source crates
+under their own licenses: `THIRD-PARTY-NOTICES.md` lists every one of them
+with its license text, and each release archive carries the same file.
